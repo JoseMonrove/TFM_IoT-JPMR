@@ -4,6 +4,7 @@
 import os
 import sys
 import time
+from collections import OrderedDict
 
 # ─── AÑADIR SRC/ AL PYTHONPATH ────────────────────────────────────────────────
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -17,17 +18,16 @@ import logging
 log = logging.getLogger(__name__)
 
 # ─── IMPORTS PRINCIPALES ───────────────────────────────────────────────────────
-from sensors.manager import GestorSensores
-from control.ventilador import VentiladorCtrl
-from utils.temp_cpu import obtener_temperatura_cpu
-from utils.csv_export import export_row
-from utils.tb_client import publish_telemetry
-from utils.git_info import get_git_commit
+from sensors.manager      import GestorSensores
+from control.ventilador   import VentiladorCtrl
+from utils.temp_cpu       import obtener_temperatura_cpu
+from utils.csv_export     import export_row
+from utils.tb_client      import publish_telemetry
+from utils.git_info       import get_git_commit
 
 # ─── CONSTANTES ────────────────────────────────────────────────────────────────
 INTERVALO = 30  # segundos entre muestras
 
-# Definimos aquí EL ORDEN en que queremos que aparezcan los campos
 CAMPOS_EXPORT = [
     "timestamp",
     # Meteorología
@@ -48,7 +48,51 @@ CAMPOS_EXPORT = [
     "temperatura_cpu", "git_commit"
 ]
 
-# ─── FUNCIONES AUXILIARES ─────────────────────────────────────────────────────
+SECCIONES = OrderedDict([
+    ("Meteorología", CAMPOS_EXPORT[1:10]),
+    ("Suelo",        CAMPOS_EXPORT[10:14]),
+    ("Armario",      CAMPOS_EXPORT[14:16]),
+    ("Espectral",    CAMPOS_EXPORT[16:37]),
+    ("Índices",      CAMPOS_EXPORT[37:49]),
+    ("CPU / Git",    ["temperatura_cpu", "git_commit"]),
+])
+
+UNIDADES = {
+    "direccion_viento":    "°",
+    "velocidad_viento_prom":"m/s",
+    "velocidad_viento_max": "m/s",
+    "temperatura":         "°C",
+    "humedad":             "%",
+    "presion":             "hPa",
+    "luz":                 "lux",
+    "indice_uv":           "UVI",
+    "lluvia":              "mm",
+    "humedad_suelo":       "%",
+    "temperatura_suelo":   "°C",
+    "conductividad_suelo": "µS/cm",
+    "ph_suelo":            "pH",
+    "temperatura_armario": "°C",
+    "humedad_armario":     "%",
+    **{ch: "a.u." for ch in CAMPOS_EXPORT[16:35]},
+    "temp_0":              "°C",
+    "temp_1":              "°C",
+    "temp_2":              "°C",
+    "NDVI":                "–",
+    "GNDVI":               "–",
+    "NDRE":                "–",
+    "SAVI":                "–",
+    "EVI":                 "–",
+    "MCARI":               "–",
+    "MTVI2":               "–",
+    "ET":                  "mm/d",
+    "Delta_T":             "°C",
+    "THI":                 "–",
+    "REP":                 "nm",
+    "PAR":                 "µmol/m²/s",
+    "temperatura_cpu":     "°C",
+    "git_commit":          "",
+}
+
 def clear_screen():
     os.system("clear" if os.name == "posix" else "cls")
 
@@ -56,49 +100,56 @@ def print_table(datos: dict):
     clear_screen()
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
     print(f"🕒 {ts}    (Ctrl+C para salir)\n")
-    print(f"{'Campo':<30}Valor")
-    print("-" * 50)
-    # Recorremos en el orden de CAMPOS_EXPORT (sin timestamp)
-    for campo in CAMPOS_EXPORT[1:]:
-        val = datos.get(campo, "--")
-        if isinstance(val, float):
-            val = f"{val:.4f}"
-        print(f"{campo:<30}{val}")
+
+    W_CAMPO = 30
+    W_VALOR = 12
+    W_UNIDAD = 12
+    line_width = W_CAMPO + W_VALOR + W_UNIDAD + 4
+
+    header = f"{'Campo':<{W_CAMPO}} | {'Valor':>{W_VALOR}} | {'Unidad':<{W_UNIDAD}}"
+    print(header)
+    print("-" * line_width)
+
+    for titulo, campos in SECCIONES.items():
+        print(f"\n {titulo} ".center(line_width, "-"))
+        for campo in campos:
+            val = datos.get(campo, "--")
+            if isinstance(val, float):
+                val = f"{val:.4f}"
+            unidad = UNIDADES.get(campo, "")
+            print(f"{campo:<{W_CAMPO}} | {val:>{W_VALOR}} | {unidad:<{W_UNIDAD}}")
     print()
 
-# ─── PROGRAMA PRINCIPAL ────────────────────────────────────────────────────────
 def main():
     log.info("▶️ Arrancando sistema headless con CSV, ThingsBoard y Git Info")
-    sensores = GestorSensores()
+
+    # ─── AUTO-GIT ───────────────────────────────────────────────
+    from utils.git_auto import auto_commit_and_push
+    auto_commit_and_push()
+    # ─────────────────────────────────────────────────────────────
+
+    sensores   = GestorSensores()
     ventilador = VentiladorCtrl()
     git_commit = get_git_commit()
 
     try:
         while True:
-            # 1) Leer todos los sensores e índices
             datos = sensores.leer_todo()
 
-            # 2) Temperatura CPU
             temp_cpu = obtener_temperatura_cpu()
             datos["temperatura_cpu"] = temp_cpu
 
-            # 3) Git commit
             datos["git_commit"] = git_commit
 
-            # 4) Control ventilador
             ventilador.controlar_por_temperatura(datos.get("temperatura_armario"))
             ventilador.controlar_por_temperatura_cpu(datos.get("temperatura_cpu"))
 
-            # 5) Guardar CSV
             export_row(datos, CAMPOS_EXPORT)
 
-            # 6) Enviar a ThingsBoard
             publish_telemetry(datos)
 
-            # 7) Mostrar por consola
             print_table(datos)
 
-            # 8) Esperar
             time.sleep(INTERVALO)
 
     except KeyboardInterrupt:

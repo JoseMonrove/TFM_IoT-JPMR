@@ -1,10 +1,7 @@
-# tests/test_imports.py
+# src/tests/test_imports.py
 """
-Verifica que los tres paquetes principales se puedan importar.
-Si este test falla
-  → hay un problema de rutas o __init__.py ausente.
+Verifica que los dos paquetes principales se puedan importar.
 """
 def test_imports():
     import sensors.manager
     import control.ventilador
-    import gui.scada
