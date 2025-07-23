@@ -1,22 +1,4 @@
-# control/ventilador.py
-
-"""
-VentiladorCtrl
-==============
-Lógica de control para:
- • Ventiladores de 12 V (PIN_VENTILADOR)
- • Actuadores lineales que cierran la compuerta (PIN_ACTUADOR_CERRAR)
-
-Comportamiento:
-------------------------------------------------------------------
-Temp_armario ≥ TEMPERATURA_UMBRAL_ALTA  ➜  Ventilador ON, compuerta ABIERTA
-Temp_armario ≤ TEMPERATURA_UMBRAL_BAJA ➜  Ventilador OFF,    compuerta CERRADA
-            (pulso de PULSO_ACTUADOR_S s al actuador; luego se desacopla)
-------------------------------------------------------------------
-
-Esta clase **ya NO** contempla control por temperatura de CPU.  
-La lectura de CPU puede hacerse por separado sin afectar a estos actuadores.
-"""
+# src/control/ventilador.py
 
 import logging
 import threading
@@ -31,111 +13,115 @@ except ImportError:
     GPIO_DISPONIBLE = False
     log.warning("RPi.GPIO no disponible – modo simulación")
 
-# ---------------- CONSTANTES -------------------
-PIN_VENTILADOR       = 18   # GPIO 18 (BCM)
-PIN_ACTUADOR_CERRAR  = 22   # GPIO 22 (BCM)
+# Pines de control
+PIN_VENTILADOR      = 18   # GPIO 18 (BCM)
+PIN_ACTUADOR_CERRAR = 22   # GPIO 22 (BCM)
 
-TEMPERATURA_UMBRAL_ALTA = 27.0   # °C – encender ventilador
-TEMPERATURA_UMBRAL_BAJA = 26.0   # °C – apagar ventilador
+# Umbrales temperatura armario
+TEMP_ON     = 27.0   # °C – encender ventilador
+TEMP_OFF    = 26.0   # °C – apagar ventilador y cerrar compuerta
 
-PULSO_ACTUADOR_S      = 15.0    # segundos que permanece HIGH el actuador al cerrar
+# Duración del pulso de cierre del actuador (segundos)
+PULSO_CIERRE = 15.0
 
 class VentiladorCtrl:
+    """
+    Lógica de control para:
+      • Ventilador 12 V (PIN_VENTILADOR)
+      • Actuador lineal (PIN_ACTUADOR_CERRAR)
+
+    Solo se basa en la temperatura del armario:
+      Temp ≥ TEMP_ON  → Ventilador ON, compuerta ABIERTA
+      Temp ≤ TEMP_OFF → Ventilador OFF, compuerta CERRADA
+    """
+
     def __init__(
         self,
-        pin_ventilador: int = PIN_VENTILADOR,
-        pin_actuador_cerrar: int = PIN_ACTUADOR_CERRAR,
-        temp_on: float = TEMPERATURA_UMBRAL_ALTA,
-        temp_off: float = TEMPERATURA_UMBRAL_BAJA,
-    ) -> None:
+        pin_vent=PIN_VENTILADOR,
+        pin_act=PIN_ACTUADOR_CERRAR,
+        temp_on=TEMP_ON,
+        temp_off=TEMP_OFF
+    ):
         # Pines y umbrales
-        self.pin_ventilador      = pin_ventilador
-        self.pin_actuador_cerrar = pin_actuador_cerrar
-        self.temp_on             = temp_on
-        self.temp_off            = temp_off
+        self.pin_vent        = pin_vent
+        self.pin_act         = pin_act
+        self.temp_on         = temp_on
+        self.temp_off        = temp_off
 
         # Estados internos
-        self.estado_ventilador = False   # False = OFF
-        self.estado_actuador   = False   # False = compuerta relajada
-        self._timer_actuador   = None
+        self.estado_vent       = False  # usado internamente
+        self.estado_ventilador = False  # alias para tests
+        self.estado_act        = False  # True = compuerta cerrada
+        self._timer_act       = None
 
         # Configuración GPIO
         if GPIO_DISPONIBLE:
             GPIO.setmode(GPIO.BCM)
-            GPIO.setup(self.pin_ventilador, GPIO.OUT, initial=GPIO.LOW)
-            GPIO.setup(self.pin_actuador_cerrar, GPIO.OUT, initial=GPIO.LOW)
+            GPIO.setup(self.pin_vent, GPIO.OUT, initial=GPIO.LOW)
+            GPIO.setup(self.pin_act,  GPIO.OUT, initial=GPIO.LOW)
 
-        # Callback externo para cambios de estado del ventilador
-        self.callback_estado_ventilador = None
-
-        log.info("VentiladorCtrl inicializado")
+        log.info("VentiladorCtrl inicializado (solo temp. armario)")
 
     def controlar_por_temperatura(self, temperatura: float | None) -> None:
         """
-        Control principal: llamar a este método en cada ciclo de lectura.
-        Solo actúa si temperatura no es None.
+        Llamar en cada ciclo pasándole la temp. del armario.
         """
         if temperatura is None:
             return
 
-        # Encender ventilador y abrir compuerta
-        if temperatura >= self.temp_on and not self.estado_ventilador:
-            self._ventilador_on()
+        # Encender si supera umbral alto y estaba apagado
+        if temperatura >= self.temp_on and not self.estado_vent:
+            self._encender()
 
-        # Apagar ventilador y cerrar compuerta
-        elif temperatura <= self.temp_off and self.estado_ventilador:
-            self._ventilador_off()
+        # Apagar si baja de umbral bajo y estaba encendido
+        elif temperatura <= self.temp_off and self.estado_vent:
+            self._apagar()
 
-    # ================== ACCIONES LOW-LEVEL ============================
-    def _ventilador_on(self) -> None:
+    def _encender(self) -> None:
         if GPIO_DISPONIBLE:
-            GPIO.output(self.pin_ventilador, GPIO.HIGH)      # Ventilador ON
-            GPIO.output(self.pin_actuador_cerrar, GPIO.LOW)  # Compuerta ABIERTA
+            GPIO.output(self.pin_vent, GPIO.HIGH)   # Ventilador ON
+            GPIO.output(self.pin_act,  GPIO.LOW)    # Compuerta ABIERTA
 
+        self.estado_vent        = True
         self.estado_ventilador = True
-        self.estado_actuador   = False
-        self._cancelar_timer_actuador()
+        self.estado_act         = False
+        self._cancelar_timer()
 
         log.info("🌡️ Ventilador ON  |  Compuerta ABIERTA")
-        if self.callback_estado_ventilador:
-            self.callback_estado_ventilador(True)
 
-    def _ventilador_off(self) -> None:
+    def _apagar(self) -> None:
         if GPIO_DISPONIBLE:
-            GPIO.output(self.pin_ventilador, GPIO.LOW)        # Ventilador OFF
-            GPIO.output(self.pin_actuador_cerrar, GPIO.HIGH)  # Inicia cierre
+            GPIO.output(self.pin_vent, GPIO.LOW)    # Ventilador OFF
+            GPIO.output(self.pin_act,  GPIO.HIGH)   # Inicia cierre compuerta
 
+        self.estado_vent        = False
         self.estado_ventilador = False
-        self.estado_actuador   = True
+        self.estado_act         = True
 
         log.info("❄️ Ventilador OFF | Cerrando compuerta…")
-        if self.callback_estado_ventilador:
-            self.callback_estado_ventilador(False)
 
-        # Tras PULSO_ACTUADOR_S segundos, desactiva el actuador
-        self._timer_actuador = threading.Timer(PULSO_ACTUADOR_S, self._reset_actuador)
-        self._timer_actuador.start()
+        # Tras PULSO_CIERRE segundos, liberar actuador
+        self._timer_act = threading.Timer(PULSO_CIERRE, self._reset_act)
+        self._timer_act.start()
 
-    def _reset_actuador(self) -> None:
+    def _reset_act(self) -> None:
         if GPIO_DISPONIBLE:
-            GPIO.output(self.pin_actuador_cerrar, GPIO.LOW)
-        self.estado_actuador = False
-        self._timer_actuador = None
-        log.info("🔧 Actuador desactivado (ahorro de energía)")
+            GPIO.output(self.pin_act, GPIO.LOW)    # Compuerta relajada
 
-    def _cancelar_timer_actuador(self) -> None:
-        if self._timer_actuador:
-            self._timer_actuador.cancel()
-            self._timer_actuador = None
+        self.estado_act = False
+        self._timer_act = None
 
-    # ================== LIMPIEZA GLOBAL ===============================
+        log.info("🔧 Actuador desactivado (ahorro energía)")
+
+    def _cancelar_timer(self) -> None:
+        if self._timer_act:
+            self._timer_act.cancel()
+            self._timer_act = None
+
     def cleanup(self) -> None:
-        """
-        Llamar al cerrar el programa para asegurar que todos los
-        pines quedan en estado LOW y no quedan timers activos.
-        """
-        self._cancelar_timer_actuador()
+        """Detiene timers y deja todos los pines en LOW."""
+        self._cancelar_timer()
         if GPIO_DISPONIBLE:
-            GPIO.output(self.pin_ventilador, GPIO.LOW)
-            GPIO.output(self.pin_actuador_cerrar, GPIO.LOW)
+            GPIO.output(self.pin_vent, GPIO.LOW)
+            GPIO.output(self.pin_act,  GPIO.LOW)
         log.info("VentiladorCtrl limpiado")
