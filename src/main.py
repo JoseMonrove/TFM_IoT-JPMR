@@ -41,9 +41,6 @@ CAMPOS_EXPORT = [
     "A_410nm","B_435nm","C_460nm","D_485nm","E_510nm","F_535nm","G_560nm",
     "H_585nm","R_610nm","I_645nm","S_680nm","J_705nm","T_730nm","U_760nm",
     "V_810nm","W_860nm","K_900nm","L_940nm","temp_0","temp_1","temp_2",
-    # Índices
-    "NDVI","GNDVI","NDRE","SAVI","EVI","MCARI","MTVI2",
-    "ET","Delta_T","THI","REP","PAR",
     # CPU y Git
     "temperatura_cpu", "git_commit"
 ]
