@@ -126,8 +126,7 @@ def main():
             datos["git_commit"] = git_commit
 
             ventilador.controlar_por_temperatura(datos.get("temperatura_armario"))
-            ventilador.controlar_por_temperatura_cpu(datos.get("temperatura_cpu"))
-
+            
             export_row(datos, CAMPOS_EXPORT)
 
             publish_telemetry(datos)
