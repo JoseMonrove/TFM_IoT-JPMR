@@ -50,7 +50,6 @@ SECCIONES = OrderedDict([
     ("Suelo",        CAMPOS_EXPORT[10:14]),
     ("Armario",      CAMPOS_EXPORT[14:16]),
     ("Espectral",    CAMPOS_EXPORT[16:37]),
-    ("Índices",      CAMPOS_EXPORT[37:49]),
     ("CPU / Git",    ["temperatura_cpu", "git_commit"]),
 ])
 
