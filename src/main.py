@@ -26,7 +26,7 @@ from utils.tb_client      import publish_telemetry
 from utils.git_info       import get_git_commit
 
 # ─── CONSTANTES ────────────────────────────────────────────────────────────────
-INTERVALO = 0  # segundos entre muestras
+INTERVALO = 10  # segundos entre muestras
 
 CAMPOS_EXPORT = [
     "timestamp",
