@@ -350,6 +350,9 @@ class GestorSensores:
         if datos_espectrales:
             datos.update(datos_espectrales)
 
+        return datos
+
+
         # Cálculo de índices espectrales
         try:
             from utils.indices import calcular_indices
