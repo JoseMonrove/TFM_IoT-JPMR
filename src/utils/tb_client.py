@@ -4,7 +4,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
-VPS_URL = "http://217.154.101.202:5000"  # O ajusta IP/puerto si cambian
+VPS_URL = "http://217.154.101.202:5000/datos"  # O ajusta IP/puerto si cambian
 
 def publish_telemetry(payload: dict) -> None:
     """Envía el diccionario a tu backend Flask vía HTTP POST."""
