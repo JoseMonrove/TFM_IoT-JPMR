@@ -87,7 +87,7 @@ class VentiladorCtrl:
         self.estado_act         = False
         self._cancelar_timer()
 
-        log.info("🌡️ Ventilador ON  |  Compuerta ABIERTA")
+        log.info(" Ventilador ON  |  Compuerta ABIERTA")
 
     def _apagar(self) -> None:
         if GPIO_DISPONIBLE:
@@ -98,7 +98,7 @@ class VentiladorCtrl:
         self.estado_ventilador = False
         self.estado_act         = True
 
-        log.info("❄️ Ventilador OFF | Cerrando compuerta…")
+        log.info(" Ventilador OFF | Cerrando compuerta…")
 
         # Tras PULSO_CIERRE segundos, liberar actuador
         self._timer_act = threading.Timer(PULSO_CIERRE, self._reset_act)
@@ -111,7 +111,7 @@ class VentiladorCtrl:
         self.estado_act = False
         self._timer_act = None
 
-        log.info("🔧 Actuador desactivado (ahorro energía)")
+        log.info(" Actuador y ventilador desactivados ")
 
     def _cancelar_timer(self) -> None:
         if self._timer_act:
