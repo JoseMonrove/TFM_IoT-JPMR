@@ -19,7 +19,7 @@ PIN_ACTUADOR_CERRAR = 22   # GPIO 22 (BCM)
 
 # Umbrales temperatura armario
 TEMP_ON     = 33.0   # °C – encender ventilador
-TEMP_OFF    = 32.0   # °C – apagar ventilador y cerrar compuerta
+TEMP_OFF    = 32.9   # °C – apagar ventilador y cerrar compuerta
 
 # Duración del pulso de cierre del actuador (segundos)
 PULSO_CIERRE = 15.0
